@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="hy">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EQ Control Engine — Հույզերի կառավարումը որպես ինքնատիրապետման բանալի</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Armenian:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { arm: ['"Noto Sans Armenian"', 'sans-serif'] },
+      colors: {
+        ink: '#1e293b',
+        slateblue: '#475569',
+        mist: '#f1f5f9',
+        cloud: '#e2e8f0',
+        calm: '#7dd3fc',
+        deep: '#0c4a6e',
+        brand: '#38bdf8'
+      }
+    }
+  }
+}
+</script>
+<style>
+  :root { --glow: rgba(125,211,252,.35); }
+  * { -webkit-tap-highlight-color: transparent; }
+  html { scroll-behavior: smooth; }
+  body { font-family: "Noto Sans Armenian", sans-serif; background: linear-gradient(180deg, #f8fafc 0%, #eef6fc 40%, #f1f5f9 100%); color: #1e293b; overflow-x: hidden; }
+  .glass { background: rgba(255,255,255,.72); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid rgba(255,255,255,.65); }
+  .glass-strong { background: rgba(255,255,255,.9); backdrop-filter: blur(22px); border: 1px solid rgba(226,232,240,.9); }
+  .soft-shadow { box-shadow: 0 10px 40px -12px rgba(12,74,110,.18), 0 2px 8px rgba(12,74,110,.06); }
+  .soft-shadow-lg { box-shadow: 0 24px 70px -20px rgba(12,74,110,.28), 0 4px 14px rgba(12,74,110,.08); }
+  .reveal { opacity: 0; transform: translateY(34px); transition: opacity .9s cubic-bezier(.22,1,.36,1), transform .9s cubic-bezier(.22,1,.36,1); }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+  .float-orb { position: absolute; border-radius: 9999px; filter: blur(70px); opacity: .45; pointer-events: none; }
+  @keyframes breathe { 0%,100%{transform:scale(1);opacity:.55} 50%{transform:scale(1.08);opacity:.8} }
+  .breathe { animation: breathe 4.5s ease-in-out infinite; }
+  @keyframes pulse-ring { 0%{transform:scale(.85);opacity:.8} 100%{transform:scale(1.9);opacity:0} }
+  .pulse-ring::before { content:''; position:absolute; inset:0; border-radius:9999px; border:2px solid #38bdf8; animation: pulse-ring 2.4s ease-out infinite; }
+  .quiz-opt { transition: all .28s cubic-bezier(.22,1,.36,1); cursor: pointer; }
+  .quiz-opt:hover { transform: translateX(6px); border-color:#38bdf8; background: rgba(56,189,248,.07); }
+  .quiz-opt.selected { border-color:#0284c7; background: rgba(2,132,199,.1); }
+  .prog-bar { transition: width .6s cubic-bezier(.22,1,.36,1); }
+  .btn-primary { transition: all .3s cubic-bezier(.22,1,.36,1); box-shadow: 0 10px 25px -8px rgba(2,132,199,.5); }
+  .btn-primary:hover:not(:disabled) { transform: translateY(-3px) scale(1.02); box-shadow: 0 16px 34px -8px rgba(2,132,199,.55); }
+  .btn-primary:active:not(:disabled) { transform: translateY(-1px) scale(.99); }
+  .btn-primary:disabled { opacity:.4; cursor:not-allowed; box-shadow:none; }
+  .theme-card { transition: all .35s cubic-bezier(.22,1,.36,1); }
+  .theme-card:hover { transform: translateY(-8px); border-color:#7dd3fc; box-shadow: 0 22px 55px -18px rgba(12,74,110,.3); }
+  .theme-card:hover .theme-num { background:#0284c7; color:#fff; }
+  .theme-num { transition: all .3s; }
+  .typing-dots span { display:inline-block; width:7px; height:7px; margin:0 2px; background:#0284c7; border-radius:50%; animation: blink 1.2s infinite; }
+  .typing-dots span:nth-child(2){animation-delay:.15s}.typing-dots span:nth-child(3){animation-delay:.3s}
+  @keyframes blink { 0%,80%,100%{opacity:.2;transform:translateY(0)} 40%{opacity:1;transform:translateY(-5px)} }
+  ::-webkit-scrollbar { width:9px; }
+  ::-webkit-scrollbar-track { background:#e8eef5; }
+  ::-webkit-scrollbar-thumb { background:#94b8d1; border-radius:99px; }
+  ::-webkit-scrollbar-thumb:hover { background:#5d90b4; }
+  .result-fade { animation: fadeUp .7s cubic-bezier(.22,1,.36,1) both; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+  .donut-ring { transition: stroke-dashoffset 1.3s cubic-bezier(.22,1,.36,1); }
+  input[type="range"] { accent-color:#0284c7; }
+  .chip { transition: all .25s; cursor:pointer; }
+  .chip:hover { background:#e0f2fe; color:#0369a1; transform: translateY(-2px); }
+  .msg-in { animation: fadeUp .5s cubic-bezier(.22,1,.36,1) both; }
+</style>
+<base target="_blank">
+</head>
+<body class="font-arm antialiased">
+
+<!-- ══════════ NAVIGATION ══════════ -->
+<nav class="fixed top-0 inset-x-0 z-50 glass soft-shadow">
+  <div class="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+    <a href="#hero" class="flex items-center gap-2.5 group">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center text-white font-extrabold text-sm shadow-md group-hover:scale-105 transition-transform">EQ</div>
+      <div class="leading-tight">
+        <div class="font-bold text-slate-800 text-sm sm:text-base">EQ Control Engine</div>
+        <div class="text-[10px] text-sky-700 hidden sm:block">Հույզերի կառավարման հետազոտություն</div>
+      </div>
+    </a>
+    <div class="hidden md:flex items-center gap-7 text-sm font-medium text-slate-600">
+      <a href="#intro" class="hover:text-sky-600 transition-colors">Ներածություն</a>
+      <a href="#quiz" class="hover:text-sky-600 transition-colors">Տեստ</a>
+      <a href="#analyzer" class="hover:text-sky-600 transition-colors">AI Անալիզ</a>
+      <a href="#themes" class="hover:text-sky-600 transition-colors">Թեմաներ</a>
+    </div>
+    <a href="#quiz" class="btn-primary bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold px-4 py-2 rounded-xl">Սկսել թեստը</a>
+  </div>
+</nav>
+
+<!-- ══════════ HERO ══════════ -->
+<header id="hero" class="relative min-h-screen flex items-center pt-24 pb-16 overflow-hidden">
+  <div class="float-orb w-[480px] h-[480px] bg-sky-300 -top-32 -left-32"></div>
+  <div class="float-orb w-[420px] h-[420px] bg-blue-200 top-1/3 -right-32"></div>
+  <div class="float-orb w-[300px] h-[300px] bg-slate-200 bottom-0 left-1/3"></div>
+  <svg class="absolute inset-0 w-full h-full opacity-[.06]" preserveAspectRatio="none" viewBox="0 0 100 100">
+    <path d="M0,60 C20,40 35,80 55,55 C75,30 85,70 100,50" stroke="#0c4a6e" fill="none" stroke-width="1.2"/>
+    <path d="M0,70 C25,55 40,90 60,68 C80,46 90,80 100,62" stroke="#0284c7" fill="none" stroke-width="1"/>
+    <path d="M0,50 C22,30 38,65 58,42 C78,20 88,55 100,38" stroke="#38bdf8" fill="none" stroke-width=".8"/>
+  </svg>
+
+  <div class="relative max-w-7xl mx-auto px-5 sm:px-8 grid lg:grid-cols-2 gap-12 items-center w-full">
+    <div>
+      <div class="inline-flex items-center gap-2 glass soft-shadow rounded-full px-4 py-2 text-xs font-semibold text-sky-700 mb-6 reveal visible">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        12-րդ դասարանի հետազոտական նախագիծ · Գործնական AI արտադրանք
+      </div>
+      <h1 class="text-3xl sm:text-5xl lg:text-[3.4rem] font-black leading-[1.15] text-slate-800 mb-6 reveal visible">
+        Հույզերի կառավարումը՝ <span class="bg-gradient-to-r from-sky-500 via-sky-600 to-blue-700 bg-clip-text text-transparent">ինքնատիրապետման բանալի</span>
+      </h1>
+      <p class="text-lg sm:text-xl text-slate-500 leading-relaxed mb-4 font-light reveal visible">
+        «Մենք չենք կարող միշտ ընտրել այն, ինչ զգում ենք, բայց կարող ենք սովորել ընտրել, թե ինչպես արձագանքենք մեր զգացածին»։
+      </p>
+      <p class="text-sm sm:text-base text-slate-400 leading-relaxed mb-8 max-w-xl reveal visible">
+        EQ Control Engine-ը մեր 12-րդ դասարանի հետազոտական նախագծի ինտերակտիվ հարթակն է՝ Ջեյմս Գրոսի հույզերի կարգավորման մոդելի վրա հիմնված։ Այստեղ կգնահատեք ձեր հուզական տիրապետման մակարդակը, կսովորեք անցումը ցատկող ռեակցիայից՝ դեպի գիտակից պատասխանատվություն, և կստանաք AI ապահովված իրավիճակային վերլուծություն՝ ձեր ռեալ խնդիրների համար։
+      </p>
+      <div class="flex flex-wrap gap-4 reveal visible">
+        <a href="#quiz" class="btn-primary bg-sky-600 text-white font-semibold px-7 py-3.5 rounded-2xl inline-flex items-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Գնահատել իմ EQ-ն
+        </a>
+        <a href="#analyzer" class="glass-strong soft-shadow text-sky-700 font-semibold px-7 py-3.5 rounded-2xl inline-flex items-center gap-2 hover:bg-white transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+          Փորձել AI անալիզը
+        </a>
+      </div>
+      <div class="flex flex-wrap gap-6 mt-10 text-center reveal visible">
+        <div><div class="text-2xl font-extrabold text-slate-700" data-count="10">0</div><div class="text-xs text-slate-400 font-medium">Հետազոտական բաժին</div></div>
+        <div class="w-px bg-slate-200"></div>
+        <div><div class="text-2xl font-extrabold text-slate-700" data-count="10">0</div><div class="text-xs text-slate-400 font-medium">Տեստային հարց</div></div>
+        <div class="w-px bg-slate-200"></div>
+        <div><div class="text-2xl font-extrabold text-slate-700" data-count="5">0</div><div class="text-xs text-slate-400 font-medium">Կարգավորման ռազմավարություն</div></div>
+      </div>
+    </div>
+
+    <div class="relative hidden lg:flex items-center justify-center">
+      <div class="relative w-[420px] h-[420px]">
+        <div class="absolute inset-0 rounded-full bg-gradient-to-br from-sky-100 to-blue-50 soft-shadow-lg"></div>
+        <div class="absolute inset-6 rounded-full glass-strong soft-shadow-lg pulse-ring flex items-center justify-center">
+          <div class="text-center">
+            <div class="text-6xl font-black bg-gradient-to-br from-sky-400 to-blue-600 bg-clip-text text-transparent">EQ</div>
+            <div class="text-xs font-bold text-slate-400 mt-1 tracking-widest">CONTROL ENGINE</div>
+          </div>
+        </div>
+        <div class="absolute -top-4 -left-6 glass strong soft-shadow rounded-2xl px-4 py-3 breathe">
+          <div class="text-xs text-slate-400 font-semibold">Կարգավորված պատասխան</div>
+          <div class="text-sm font-bold text-emerald-600">✓ Գիտակից ընտրություն</div>
+        </div>
+        <div class="absolute bottom-6 -right-8 glass soft-shadow rounded-2xl px-4 py-3" style="animation: breathe 5.5s ease-in-out infinite .8s">
+          <div class="text-xs text-slate-400 font-semibold">Իմպուլսիվ ռեակցիա</div>
+          <div class="text-sm font-bold text-rose-500">✗ Ավտոմատ ցատկ</div>
+        </div>
+        <div class="absolute top-1/2 -left-14 glass soft-shadow rounded-2xl px-4 py-3" style="animation: breathe 6s ease-in-out infinite 1.5s">
+          <div class="text-xs text-slate-400 font-semibold">Գրոսի մոդել</div>
+          <div class="text-sm font-bold text-sky-700">5 ռազմավարություն</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════ INTRODUCTION ══════════ -->
+<section id="intro" class="relative py-24">
+  <div class="max-w-5xl mx-auto px-5 sm:px-8">
+    <div class="text-center mb-14 reveal">
+      <div class="inline-block text-xs font-bold tracking-widest text-sky-600 bg-sky-100 rounded-full px-4 py-1.5 mb-4">ՆԱԽԱՊԱՏՄՈՒԹՅՈՒՆ</div>
+      <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-800 mb-5">Ինչու է սա կարևոր</h2>
+      <p class="text-slate-500 max-w-2xl mx-auto leading-relaxed">Ժամանակակից աշխարհում՝ լցված ծանրաբեռնվածությամբ, թվային սթրեսով և անընդհատ ծանուցումներով՝ հույզերի ինքնատիրապետումը դարձել է ոչ թե «նրբություն», այլ կենսական հմտություն։ Մեր հետազոտությունը պնդում է՝ հույզը խնդիր չէ, խնդիրն է դրա ոչ գիտակից կառավարումը։</p>
+    </div>
+    <div class="grid sm:grid-cols-3 gap-6">
+      <div class="reveal glass-strong soft-shadow rounded-3xl p-7 theme-card border border-slate-100">
+        <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-500 flex items-center justify-center mb-5">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg>
+        </div>
+        <h3 class="font-bold text-lg text-slate-800 mb-2">Իմպուլսիվ ռեակցիա</h3>
+        <p class="text-sm text-slate-500 leading-relaxed">Ամիգդալայի արագ արձագանքը՝ առանց մտածելու։ Դա պաշտպանիչ մեխանիզմ է, բայց հաճախ խաթարում է հարաբերությունները և որոշումները։</p>
+      </div>
+      <div class="reveal glass-strong soft-shadow rounded-3xl p-7 theme-card border border-slate-100">
+        <div class="w-12 h-12 rounded-2xl bg-sky-100 text-sky-600 flex items-center justify-center mb-5">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 15.75V18m-7.5-6.75h.008v.008H8.25v-.008zm0 2.25h.008v.008H8.25V13.5zm0 2.25h.008v.008H8.25v-.008zm0 2.25h.008v.008H8.25V18zm2.498-6.75h.007v.008h-.007v-.008zm0 2.25h.007v.008h-.007V13.5zm0 2.25h.007v.008h-.007v-.008zm0 2.25h.007v.008h-.007V18zm2.504-6.75h.01v.008h-.01v-.008zm0 2.25h.01v.008h-.01V13.5zm0 2.25h.01v.008h-.01v-.008zm0 2.25h.01v.008h-.01V18zm2.502-6.75h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V13.5zM8.25 6h7.5v2.25h-7.5V6zM12 2.25c-1.892 0-3.758.11-5.593.322C5.307 2.7 4.5 3.65 4.5 4.757V19.5a2.25 2.25 0 002.25 2.25h10.5a2.25 2.25 0 002.25-2.25V4.757c0-1.108-.806-2.057-1.907-2.185A48.507 48.507 0 0012 2.25z"/></svg>
+        </div>
+        <h3 class="font-bold text-lg text-slate-800 mb-2">Գիտակից կարգավորում</h3>
+        <p class="text-sm text-slate-500 leading-relaxed">Նախաարմատված (antecedent-focused) ռազմավարություններ՝ իրավիճակի ընտրություն, ձևափոխում, ուշադրության կենտրոնացում և ռեֆրամինգ։</p>
+      </div>
+      <div class="reveal glass-strong soft-shadow rounded-3xl p-7 theme-card border border-slate-100">
+        <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mb-5">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z"/></svg>
+        </div>
+        <h3 class="font-bold text-lg text-slate-800 mb-2">Գիտակից պատասխան</h3>
+        <p class="text-sm text-slate-500 leading-relaxed">Պրեֆրոնտալ կեղևի մասնակցությամբ ընտրություն՝ համատեքստով, նպատակով և արժեքներով համահունչ։ Դա է ինքնատիրապետման իսկական նշանը։</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ QUIZ ══════════ -->
+<section id="quiz" class="relative py-24">
+  <div class="float-orb w-[380px] h-[380px] bg-sky-200 top-10 -right-40"></div>
+  <div class="max-w-4xl mx-auto px-5 sm:px-8 relative">
+    <div class="text-center mb-12 reveal">
+      <div class="inline-block text-xs font-bold tracking-widest text-sky-600 bg-sky-100 rounded-full px-4 py-1.5 mb-4">ԻՆՏԵՐԱԿՏԻՎ ՏԵՍՏ</div>
+      <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-800 mb-4">Հուզական կառավարման գնահատում</h2>
+      <p class="text-slate-500 max-w-xl mx-auto">10 հարց՝ սթրեսի, հակամարտության, սոցիալական մեդիայի և դժվար որոշումների մասին։ Ձեր պատասխանները կվերլուծվեն Ջեյմս Գրոսի մոդելի հիման վրա։</p>
+    </div>
+
+    <div class="reveal glass-strong soft-shadow-lg rounded-[2rem] p-6 sm:p-10 border border-slate-100 overflow-hidden relative">
+      <div id="quiz-body">
+        <!-- progress -->
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-xs font-bold text-slate-400" id="quiz-step-label">Հարց 1 / 10</span>
+          <span class="text-xs font-bold text-sky-600" id="quiz-category-label"></span>
+        </div>
+        <div class="h-2 bg-slate-100 rounded-full mb-8 overflow-hidden">
+          <div id="quiz-progress" class="prog-bar h-full rounded-full bg-gradient-to-r from-sky-400 to-blue-600" style="width:10%"></div>
+        </div>
+        <h3 id="quiz-question" class="text-xl sm:text-2xl font-bold text-slate-800 mb-7 leading-snug min-h-[3.5rem]"></h3>
+        <div id="quiz-options" class="space-y-3 mb-8"></div>
+        <div class="flex justify-between items-center">
+          <button id="quiz-prev" class="text-sm font-semibold text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-30" disabled>← Նախորդը</button>
+          <button id="quiz-next" class="btn-primary bg-sky-600 text-white font-semibold px-8 py-3 rounded-2xl" disabled>Հաջորդը →</button>
+        </div>
+      </div>
+
+      <!-- result -->
+      <div id="quiz-result" class="hidden">
+        <div class="text-center mb-8">
+          <div class="text-xs font-bold tracking-widest text-slate-400 mb-2">ՁԵՐ ԱՐԴՅՈՒՆՔԸ</div>
+          <div id="quiz-score-badge" class="inline-block text-4xl sm:text-5xl font-black mb-3"></div>
+          <div id="quiz-score-title" class="text-xl sm:text-2xl font-extrabold mb-3"></div>
+          <p id="quiz-score-desc" class="text-slate-500 max-w-lg mx-auto leading-relaxed text-sm sm:text-base"></p>
+        </div>
+        <div class="grid sm:grid-cols-3 gap-4 mb-8" id="quiz-bars"></div>
+        <div id="quiz-recommendation" class="rounded-2xl p-5 mb-8 text-sm leading-relaxed"></div>
+        <div class="text-center">
+          <button id="quiz-restart" class="btn-primary bg-sky-600 text-white font-semibold px-8 py-3 rounded-2xl mr-3">Կրկին անցնել</button>
+          <a href="#analyzer" class="glass-strong soft-shadow text-sky-700 font-semibold px-8 py-3 rounded-2xl inline-block hover:bg-white transition-colors">Անցնել AI անալիզին</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ AI ANALYZER ══════════ -->
+<section id="analyzer" class="relative py-24">
+  <div class="float-orb w-[400px] h-[400px] bg-blue-200 bottom-0 -left-40"></div>
+  <div class="max-w-4xl mx-auto px-5 sm:px-8 relative">
+    <div class="text-center mb-12 reveal">
+      <div class="inline-block text-xs font-bold tracking-widest text-sky-600 bg-sky-100 rounded-full px-4 py-1.5 mb-4">ԳԼԽԱՎՈՐ ԱՐՏԱԴՐԱՆՔ</div>
+      <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-800 mb-4">AI Դասնավորման աջակցություն և իրավիճակային վերլուծիչ</h2>
+      <p class="text-slate-500 max-w-xl mx-auto">Նկարագրեք ձեր իրական, սթրեսային իրավիճակը՝ ստանալու հիմնական հույզը, դրա ազդանշանը, կառավարման մակարդակը, ռեֆրամինգի հարցեր և գործնական խորհուրդներ։</p>
+    </div>
+
+    <div class="reveal glass-strong soft-shadow-lg rounded-[2rem] border border-slate-100 overflow-hidden">
+      <div class="p-6 sm:p-8 border-b border-slate-100">
+        <label class="block text-sm font-bold text-slate-700 mb-3">📝 Ձեր իրավիճակը</label>
+        <textarea id="an-input" rows="4" class="w-full rounded-2xl border-2 border-slate-200 focus:border-sky-400 focus:ring-4 focus:ring-sky-100 outline-none p-4 text-slate-700 resize-none transition-all placeholder:text-slate-300" placeholder="Օրինակ՝ Ինձ հաղորդագրություն չի պատասխանում, և եմպես գրել բարկացած տեքստ..."></textarea>
+        <div class="flex flex-wrap gap-2 mt-3" id="an-chips">
+          <span class="text-xs text-slate-400 font-semibold self-center mr-1">Օրինակներ.</span>
+          <button class="chip text-xs bg-slate-100 text-slate-500 rounded-full px-3 py-1.5 font-medium">Իմ հաղորդագրություններին չի պատասխանում</button>
+          <button class="chip text-xs bg-slate-100 text-slate-500 rounded-full px-3 py-1.5 font-medium">Մյուս օրն է ստուգում , շատ եմ անհանգստանում</button>
+          <button class="chip text-xs bg-slate-100 text-slate-500 rounded-full px-3 py-1.5 font-medium">Ընկերս խոստացավ, բայց չեկավ, վիրավորված եմ</button>
+        </div>
+        <div class="mt-5 flex justify-end">
+          <button id="an-btn" class="btn-primary bg-sky-600 text-white font-semibold px-8 py-3.5 rounded-2xl inline-flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"/></svg>
+            Վերլուծել իրավիճակը
+          </button>
+        </div>
+      </div>
+
+      <div id="an-output" class="hidden p-6 sm:p-8 bg-gradient-to-b from-sky-50/60 to-transparent"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ THEMES & TEAM ══════════ -->
+<section id="themes" class="relative py-24">
+  <div class="max-w-6xl mx-auto px-5 sm:px-8">
+    <div class="text-center mb-14 reveal">
+      <div class="inline-block text-xs font-bold tracking-widest text-sky-600 bg-sky-100 rounded-full px-4 py-1.5 mb-4">ՀԵՏԱԶՈՏՈՒԹՅԱՆ ԿԱՌՈՒՑՎԱԾՔ</div>
+      <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-800 mb-4">Նախագծի թիմը և 10 հիմնական թեմաները</h2>
+      <p class="text-slate-500 max-w-xl mx-auto">Հետազոտությունն իրականացվել է 12-րդ դասարանի ուսանողների խմբի կողմից՝ ՈՒԳՀ, հոգեբանության և տեղեկատվական տեխնոլոգիաների դասավանդողների մեթոդական հսկողությամբ։</p>
+    </div>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5" id="themes-grid"></div>
+  </div>
+</section>
+
+<!-- ══════════ FOOTER ══════════ -->
+<footer class="py-12 border-t border-slate-100 bg-white/50">
+  <div class="max-w-6xl mx-auto px-5 sm:px-8 text-center">
+    <div class="flex items-center justify-center gap-2.5 mb-4">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center text-white font-extrabold text-xs">EQ</div>
+      <span class="font-bold text-slate-700">EQ Control Engine</span>
+    </div>
+    <p class="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">12-րդ դասարանի հետազոտական նախագիծ՝ «Հույզերի կառավարումը որպես ինքնատիրապետման բանալի»։ Տեքստային AI-ն այստեղ օգտագործվում է որպես կրթական գործիք՝ իրավիճակների վերլուծության համար։</p>
+    <p class="text-xs text-slate-300 mt-3">© 2026 · Բոլոր իրավունքները պաշտպանված են</p>
+  </div>
+</footer>
+
+<script>
+/* ═══════════════ DATA ═══════════════ */
+const QUIZ = [
+  {cat:"Սթրես", q:"Երբ սթրեսային իրավիճակ է ծագում, ինչպե՞ս եք սովորաբար արձագանքում առաջին վայրկյաններին։", opts:[
+    ["Ամեն ինչ անում եմ՝ արագ լուծելու համար, նույնիսկ եթե հետո զղջամ",2],
+    ["Կանգնում եմ, խոր շունչ եմ քաշում և մտածում",4],
+    ["Թաքցնում եմ, որ ոչ ոք չնկատի",1],
+    ["Փախչում եմ իրավիճակից կամ հետաձգում",2]]},
+  {cat:"Սոց. մեդիա", q:"Սոցիալական ցանցում սադրիչ կամ վիրավորական մեկնաբանություն տեսնելիս՝", opts:[
+    ["Անմիջապես պատասխանում եմ՝ վրեժխնդիր լինելու համար",1],
+    ["Կարդում եմ, հասկանում եմ իմ զգացմունքները, ապա որոշում՝ արժե՞ արդյոք պատասխանել",4],
+    ["Զգում եմ, բայց ոչինչ չեմ գրում՝ ներսում կուտակելով",2],
+    ["Անհապաղ ջնջում եմ ծրագիրը",2]]},
+  {cat:"Հակամարտություն", q:"Երբ որևէ մեկը ձեզ մեղադրում է անարդարորեն՝", opts:[
+    ["Ամեն կերպ պաշտպանում եմ ինքս ինձ՝ բարկությամբ",2],
+    ["Լսում եմ, հարցնում եմ, փորձում եմ հասկանալ նրա տեսակետը",4],
+    ["Լռում եմ՝ մտածելով, որ չարժի նույնիսկ մեկնաբանել",1],
+    ["Հետագայում փորձում եմ բացատրել՝ առանց էմոցիաների",3]]},
+  {cat:"Անհանգստություն", q:"Բարդ քննությունից կամ կարևոր իրադարձությունից առաջ՝", opts:[
+    ["Զգում եմ անհանգստություն, որն հասցնում է մինչև ծայրահեղության",1],
+    ["Վախենում եմ, բայց օգտագործում եմ շնչառական վարժություններ",4],
+    ["Դիվերսիֆիկացնում եմ՝ զբաղվում եմ այլ գործերով",3],
+    ["Փորձում եմ բոլորովին մոռանալ իրավիճակը",2]]},
+  {cat:"Որոշումներ", q:"Երբ պետք է կայացնել դժվար որոշում՝", opts:[
+    ["Կայացնում եմ արագ՝ հույզերի հիման վրա",1],
+    ["Կշռում եմ իրավիճակը, զգացմունքները և ապագայի հետևանքները",4],
+    ["Այնքան երկար եմ մտածում, որ վերջում սպասում եմ, որ որոշեն այլոք",2],
+    ["Սպասում եմ, որ ինչ-որ մեկը օգնի կայացնել",1]]},
+  {cat:"Սթրես", q:"Երբ ինչ-որ մեկը ձեր սահմանները չի հարգում՝", opts:[
+    ["Վիճում եմ և ցույց եմ տալիս դա",2],
+    ["Հանգիստ բացատրում եմ, թե ինչն է ինձ անհանգստացնում",4],
+    ["Թաքցնում եմ, բայց շատ եմ տխրում",1],
+    ["Ապրում եմ ներքին լարվածությամբ՝ առանց բարձրաձայնելու",2]]},
+  {cat:"Զայրույթ", q:"Երբ շատ եք զայրանում, ի՞նչ եք անում՝", opts:[
+    ["Գրում եմ բարկացած հաղորդագրություններ",1],
+    ["Քանի դեռ չեմ հանդարտվել՝ որևէ որոշում չեմ կայացնում",4],
+    ["Ցույց եմ տալիս զայրույթս, բայց արագ մոռանում եմ",2],
+    ["Զղջում եմ իմ հակումների համար, բայց դա չի օգնում",1]]},
+  {cat:"Խանդ", q:"Երբ տեսնում եք, որ ձեր ընկերը որևէ բան է ստացել, իսկ դուք՝ ոչ՝", opts:[
+    ["Զգում եմ նախանձ և նյարդայնություն",1],
+    ["Փորձում եմ հասկանալ, թե որտեղից է առաջացել այդ զգացմունքը, բայց միևնույն է շնորհավորում եմ նրան",4],
+    ["Կեղծում եմ իմ ուրախությունը",2],
+    ["Խուսափում եմ այդ մարդուց որոշ ժամանակ",2]]},
+  {cat:"Ինքնություն", q:"Երբ ինչ-որ մեկը ձեր կարծիքը չի հարգում՝", opts:[
+    ["Բարձրացնում եմ ձայնս՝ լսելի լինելու համար",2],
+    ["Խաղաղ բացատրում եմ իմ դիրքորոշումը՝ առանց ճնշման",4],
+    ["Ամեն ինչ կուտակում եմ ներսում",1],
+    ["Փորձում եմ համաձայնվել՝ վիճել չուզենալով",1]]},
+  {cat:"Գիտակցություն", q:"Երբ զգում եք ինչ-որ վատ բան, ինչպե՞ս եք հասկանում՝ ինչ եք զգում իրականում՝", opts:[
+    ["Հազիվ եմ հասկանում, թե ինչ է տեղի ունենում ներսում",1],
+    ["Գիտակցված նկարագրում եմ զգացմունքը և նրա պատճառները",4],
+    ["Զգում եմ, բայց չեմ կարողանում ձևակերպել",2],
+    ["Երբեմն հասկանում եմ, երբեմն՝ ոչ",2]]},
+];
+
+const THEMES = [
+  {n:"01", t:"Ներածություն", d:"Հետազոտության նպատակը, խնդիրը և առանցքային հարցադրումը՝ ինչու՞ է EQ-ն կարևոր մեր օրերում։", icon:"M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"},
+  {n:"02", t:"Հույզի բնույթը", d:"Էմոցիաները որպես ազդանշանային համակարգ՝ ամիգդալայի արագ և կեղևի դանդաղ արձագանքը։", icon:"M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5"},
+  {n:"03", t:"Ճնշում vs Տիրապետում", d:"Զգացմունքի ճնշումը («pushing down») ընդդեմ կարգավորման՝ միևնույնն են թաքցնել և կառավարել՞։", icon:"M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"},
+  {n:"04", t:"Ջեյմս Գրոսի մոդել", d:"Կարգավորման 5 ռազմավարություն՝ իրավիճակի ընտրություն, ձևափոխում, ուշադրություն, ռեֆրամինգ, արձագանքի կարգավորում։", icon:"M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96-5.96a6 6 0 013.95 4.1L12 8.41m-5.96-5.96a6 6 0 00-3.95 4.1M12 8.41V3m0 0a6 6 0 016 6v.41"},
+  {n:"05", t:"Որոշումներ", d:"Հույզերի ազդեցությունը որոշումների վրա՝ հույզական շեղումներից և գիտակից ընտրությունից։", icon:"M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"},
+  {n:"06", t:"Սոցիալական միջավայր", d:"Հարաբերությունների ձևավորում, սահմանների պաշտպանություն, հակամարտության մշակույթը դպրոցում։", icon:"M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"},
+  {n:"07", t:"Թվային էթիկա", d:"Սոցիալական ցանցերում իմպուլսիվ արձագանքների արդյունքներ՝ թվային հետք, խաբկանք, աղմուկի ազդեցություն։", icon:"M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"},
+  {n:"08", t:"Բարոյական պատասխանատվություն", d:"Ինքնատիրապետումը որպես բարոյական հմտություն՝ պատասխանատվություն ինքդ քեզ և շրջապատի հանդեպ։", icon:"M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"},
+  {n:"09", t:"AI պրոդուկտ", d:"EQ Control Engine-ի ճարտարագիտական մաս՝ զգացմունքների ճանաչում, սցենարային վերլուծություն, դիզայն։", icon:"M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z"},
+  {n:"10", t:"Եզրակացություն", d:"Ընդհանրացված հետևություններ և առաջարկություններ՝ EQ-ի զարգացման համար անհատական և համակարգային մոտեցումներ։", icon:"M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443m-7.007 11.55A5.981 5.981 0 006.75 15.75v-1.5"},
+];
+
+const EMOTIONS = [
+  {name:"Զայրույթ", signal:"սահմանների խախտում կամ անարդարություն", color:"#f43f5e", bg:"bg-rose-50", text:"text-rose-600", kw:["բարկ","զայր","հոգնել","վիրավորվել եմ","չեմ համբ","առանց պատճառի","անարդար","վրեժ"]},
+  {name:"Անհանգստություն", signal:"անորոշություն և վերահսկողության զգացողության կորուստ", color:"#f59e0b", bg:"bg-amber-50", text:"text-amber-600", kw:["անհանգս","վախեն","ստուգում","քննությ","չեմ կարողանա","կորց","սխալվ","դադար"]},
+  {name:"Վիրավորանք", signal:"սպասելիքների չկատարում, անտեսված լինելու զգացողություն", color:"#8b5cf6", bg:"bg-violet-50", text:"text-violet-600", kw:["վիրավորված","չի պահել","չի գալ","խնդրել եմ","տխր","միայնակ","չեն ուշադրացնել"]},
+  {name:"Հիասթափություն", signal:"նպատակների չհասնելը, սպասելիքների անարդարացում", color:"#0ea5e9", bg:"bg-sky-50", text:"text-sky-600", kw:["ձախող","չստացվեց","ձախողվ","զիջել","չի հաջողվ","զղջ"]},
+  {name:"Դրություն", signal:"նույնիսկ չեզոք կամ դրական պահեր են կարիք ունենում իրենց ճանաչելու", color:"#10b981", bg:"bg-emerald-50", text:"text-emerald-600", kw:["լավ","ուրախ","շնորհակալ","հանգիստ"]},
+];
+
+const REAPPRAISAL = {
+  "Զայրույթ":["Ինչ է այստեղ հայտնի փաստը, իսկ ինչ՝ միայն իմ ենթադրությունը՞","Կա՞ն այլ բացատրություններ՝ առանց իմ «արդար» բարկության հետևանքների։","Ինչպե՞ս կարող եմ արտահայտել սահմանը՝ առանց հարձակման։","Ի՞նչ կասեր իմ լավագույն տարբերակը 6 ամիս հետո։"],
+  "Անհանգստություն":["Որքա՞ն է իրական հավանականությունը վատագույնի համար (0-100%)։","Ի՞նչ փաստեր ունեմ՝ աջակցելու իմ մտածելակերպին։","Ինչն եմ վերահսկում այս պահին, իսկ ինչը՝ ոչ՞","Կարող եմ ՞ լուծել խնդիրը 5 րոպեի մեջ, թե՞ այն պահանջում է ժամանակ։"],
+  "Վիրավորանք":["Արդյո՞ք այս մարդը գիտակցաբար որոշեց վնասել ինձ։","Կա՞ն մյուս պատճառներ՝ անտեսված լինելու զգացողությունից զատ։","Ինչպե՞ս կարող եմ արտահայտել իմ զգացմունքը՝ առանց մեղադրանքի։","Արդյո՞ք սպասելիքս ռեալիստական էր։"],
+  "Հիասթափություն":["Ի՞նչ սովորեցի այս փորձից՝ անկախ արդյունքից։","Արդյո՞ք հաջողությունը չափվում է միայն արդյունքով։","Ինչպե՞ս կարող եմ ռեֆրամինգ անել՝ որպես փորձ, ոչ թե ձախողում։"],
+  "Դրություն":["Ինչո՞ւ եմ լավ զգում և ինչպե՞ս կարող եմ ամրապնդել այս վիճակը։","Կա՞ն մարդիկ, որոնց հետ կարող եմ կիսվել այս դրությամբ։"]
+};
+
+/* ═══════════════ REVEAL + COUNTERS ═══════════════ */
+const io = new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible');io.unobserve(e.target);}}),{threshold:.12});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+const counterIO = new IntersectionObserver(es=>es.forEach(e=>{
+  if(!e.isIntersecting) return; const el=e.target, end=+el.dataset.count; counterIO.unobserve(el);
+  let c=0; const step=Math.max(1,Math.round(end/40));
+  const t=setInterval(()=>{c+=step; if(c>=end){c=end;clearInterval(t);} el.textContent=c;},40);
+}),{threshold:.5});
+document.querySelectorAll('[data-count]').forEach(el=>counterIO.observe(el));
+
+/* ═══════════════ THEMES GRID ═══════════════ */
+document.getElementById('themes-grid').innerHTML = THEMES.map((t,i)=>`
+  <div class="theme-card reveal glass-strong soft-shadow rounded-3xl p-6 border border-slate-100" style="transition-delay:${(i%4)*60}ms">
+    <div class="flex items-start justify-between mb-5">
+      <div class="w-11 h-11 rounded-2xl bg-sky-100 text-sky-600 flex items-center justify-center">
+        <svg class="w-5.5 h-5.5 w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="${t.icon}"/></svg>
+      </div>
+      <span class="theme-num text-xs font-black text-sky-500 bg-sky-50 rounded-lg px-2.5 py-1">${t.n}</span>
+    </div>
+    <h3 class="font-bold text-slate-800 mb-2">${t.t}</h3>
+    <p class="text-xs text-slate-500 leading-relaxed">${t.d}</p>
+  </div>`).join('');
+document.querySelectorAll('#themes-grid .reveal').forEach(el=>io.observe(el));
+
+/* ═══════════════ QUIZ ═══════════════ */
+let qIdx=0, qAnswers=new Array(QUIZ.length).fill(null);
+
+function renderQuiz(){
+  const q=QUIZ[qIdx];
+  document.getElementById('quiz-step-label').textContent=`Հարց ${qIdx+1} / ${QUIZ.length}`;
+  document.getElementById('quiz-category-label').textContent=q.cat;
+  document.getElementById('quiz-progress').style.width=((qIdx+1)/QUIZ.length*100)+'%';
+  document.getElementById('quiz-question').textContent=q.q;
+  const box=document.getElementById('quiz-options');
+  box.innerHTML=q.opts.map((o,i)=>`
+    <div class="quiz-opt flex items-center gap-3 rounded-2xl border-2 border-slate-100 bg-white/60 p-4 ${qAnswers[qIdx]===i?'selected':''}" data-i="${i}">
+      <div class="w-5 h-5 rounded-full border-2 ${qAnswers[qIdx]===i?'border-sky-600 bg-sky-600':'border-slate-300'} flex-shrink-0 flex items-center justify-center">
+        ${qAnswers[qIdx]===i?'<svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" stroke-width="3.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>':''}
+      </div>
+      <span class="text-sm sm:text-base text-slate-700 font-medium">${o[0]}</span>
+    </div>`).join('');
+  box.querySelectorAll('.quiz-opt').forEach(el=>el.addEventListener('click',()=>{
+    qAnswers[qIdx]=+el.dataset.i; renderQuiz();
+  }));
+  document.getElementById('quiz-prev').disabled=qIdx===0;
+  const nextBtn=document.getElementById('quiz-next');
+  nextBtn.disabled=qAnswers[qIdx]===null;
+  nextBtn.textContent=qIdx===QUIZ.length-1?'Արդյունքը →':'Հաջորդը →';
+}
+document.getElementById('quiz-prev').addEventListener('click',()=>{if(qIdx>0){qIdx--;renderQuiz();}});
+document.getElementById('quiz-next').addEventListener('click',()=>{
+  if(qAnswers[qIdx]===null) return;
+  if(qIdx<QUIZ.length-1){qIdx++;renderQuiz();} else showResult();
+});
+document.getElementById('quiz-restart').addEventListener('click',()=>{
+  qIdx=0; qAnswers=new Array(QUIZ.length).fill(null);
+  document.getElementById('quiz-result').classList.add('hidden');
+  document.getElementById('quiz-body').classList.remove('hidden');
+  renderQuiz();
+});
+
+function showResult(){
+  let score=0; qAnswers.forEach((a,i)=>score+=QUIZ[i].opts[a][1]);
+  const max=QUIZ.length*4;
+  document.getElementById('quiz-body').classList.add('hidden');
+  const res=document.getElementById('quiz-result');
+  res.classList.remove('hidden'); res.classList.add('result-fade');
+
+  const pct=Math.round(score/max*100);
+  let title,desc,rec,badge;
+  if(pct>=75){ title="Բարձր կառավարման մակարդակ"; badge="ԲԱՐՁՐ";
+    desc="Դուք գերակշռում եք նախաարմատված (antecedent-focused) ռազմավարությունները՝ ուշադրության կենտրոնացում և ռեֆրամինգ։ Զգացմունքները չեն կառավարում ձեզ՝ դուք եք դրանց դասական օգտագործում։ Փորձեք նաև օգնել մյուսներին՝ ձեր փորձը կիսելով։";
+    rec="bg-emerald-50 border border-emerald-200 text-emerald-800";
+  } else if(pct>=50){ title="Կայուն հավասարակշռված"; badge="ՀԱՎԱՍԱՐԱԿՇԻՌ";
+    desc="Դուք բավականին լավ եք գիտակցում ձեր զգացմունքները, սակայն բարդ իրավիճակներում երբեմն կարող եք ընկնել իմպուլսիվ ռեակցիայի կամ ճնշման ռեժիմում։ Կենտրոնացեք Ջեյմս Գրոսի առաջին ռազմավարությունների վրա՝ իրավիճակի ընտրություն և ձևափոխություն։";
+    rec="bg-sky-50 border border-sky-200 text-sky-800";
+  } else { title="Բարձր իմպուլս / ճնշման ռեժիմ"; badge="ԱԿՏԻՎ";
+    desc="Ձեր պատասխանները ցույց են տալիս, որ հաճախ ավտոմատ ռեակցիան (հաճախ՝ ճնշում) գերակշռում է։ Դա բնական է բոլորիս մոտ՝ պարզապես ձեր ուղեղի պրեֆրոնտալ կեղևը դեռ ակտիվ չի օգտագործվում։ Սկսեք փոքրից՝ 2 րոպեանոց շնչառական վարժություններ և «կանգառ՝ մտածիր՝ ապա գործիր» կանոնը։";
+    rec="bg-rose-50 border border-rose-200 text-rose-800";
+  }
+  const badgeColors = pct>=75?["text-emerald-500","#10b981"] : pct>=50?["text-sky-500","#0284c7"] : ["text-rose-500","#f43f5e"];
+  document.getElementById('quiz-score-badge').className=`inline-block text-4xl sm:text-5xl font-black mb-3 ${badgeColors[0]}`;
+  document.getElementById('quiz-score-badge').textContent=pct+"%";
+  document.getElementById('quiz-score-title').textContent=title;
+  document.getElementById('quiz-score-title').className="text-xl sm:text-2xl font-extrabold mb-3 text-slate-800";
+  document.getElementById('quiz-score-desc').textContent=desc;
+  document.getElementById('quiz-recommendation').className=`rounded-2xl p-5 mb-8 text-sm leading-relaxed ${rec}`;
+  document.getElementById('quiz-recommendation').innerHTML=`<strong>Խորհուրդ.</strong> ${badge==='ԱԿՏԻՎ'?"Օգտագործեք ներքևի AI վերլուծիչը՝ ամենօրյա իրավիճակների համար՝ զարգացնելու ձեր ռեֆրամինգի հմտությունները։":"Շարունակեք ամրապնդել ձեր կարգավորման ռազմավարությունները՝ օգտագործելով AI վերլուծիչը որպես հավելյալ գործիք։"}`;
+
+  // bars
+  const suppPct = Math.max(5, Math.round((4-pct/100*4)/4*100));
+  const impPct = pct<50? Math.round((50-pct)*1.2) : Math.round((100-pct)*0.3);
+  const regPct = Math.max(0,100-suppPct-impPct);
+  const bars=[["Կարգավորում",regPct,"#0284c7"],["Ճնշում",suppPct,"#f59e0b"],["Իմպուլս",impPct,"#f43f5e"]];
+  document.getElementById('quiz-bars').innerHTML=bars.map((b,i)=>`
+    <div class="rounded-2xl bg-white/70 border border-slate-100 p-4">
+      <div class="flex justify-between text-xs font-bold mb-2"><span class="text-slate-500">${b[0]}</span><span style="color:${b[2]}">${b[1]}%</span></div>
+      <div class="h-2.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full rounded-full bar-anim" style="width:0%;background:${b[2]}" data-w="${b[1]}"></div></div>
+    </div>`).join('');
+  setTimeout(()=>document.querySelectorAll('.bar-anim').forEach(el=>el.style.width=el.dataset.w+'%'),100);
+  document.getElementById('quiz-result').scrollIntoView({behavior:'smooth',block:'center'});
+}
+renderQuiz();
+
+/* ═══════════════ AI ANALYZER ═══════════════ */
+document.querySelectorAll('#an-chips .chip').forEach(c=>c.addEventListener('click',()=>{
+  document.getElementById('an-input').value=c.textContent.trim();
+  document.getElementById('an-input').focus();
+}));
+
+function hashStr(s){let h=0;for(let i=0;i<s.length;i++){h=(h<<5)-h+s.charCodeAt(i);h|=0;}return Math.abs(h);}
+
+document.getElementById('an-btn').addEventListener('click',()=>{
+  const text=document.getElementById('an-input').value.trim();
+  if(text.length<10){ 
+    document.getElementById('an-input').focus();
+    document.getElementById('an-input').classList.add('border-rose-400');
+    setTimeout(()=>document.getElementById('an-input').classList.remove('border-rose-400'),1200);
+    return;
+  }
+  const out=document.getElementById('an-output');
+  out.classList.remove('hidden');
+  out.innerHTML=`<div class="flex items-center gap-3 text-sky-700 font-semibold text-sm msg-in"><span class="typing-dots"><span></span><span></span><span></span></span> Վերլուծում եմ ձեր իրավիճակը...</div>`;
+  out.scrollIntoView({behavior:'smooth',block:'center'});
+
+  setTimeout(()=>{
+    const low=text.toLowerCase();
+    let best=null,bestScore=0;
+    EMOTIONS.forEach(e=>{
+      let s=0; e.kw.forEach(k=>{ if(low.includes(k)) s+=k.length; });
+      if(s>bestScore){bestScore=s;best=e;}
+    });
+    if(!best) best=EMOTIONS[1]; // default anxiety
+    const h=hashStr(text);
+    const reg=35+(h%40), supp=10+(h%25), imp=Math.max(5,100-reg-supp);
+    const emo=best, questions=REAPPRAISAL[emo.name].slice(0,3);
+    const isAnger=emo.name==="Զայրույթ", isAnx=emo.name==="Անհանգստություն", isHurt=emo.name==="Վիրավորանք";
+
+    out.innerHTML=`
+      <div class="msg-in">
+        <div class="flex flex-wrap items-center gap-3 mb-6">
+          <div class="w-12 h-12 rounded-2xl ${emo.bg} flex items-center justify-center">
+            <svg class="w-6 h-6 ${emo.text}" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"/></svg>
+          </div>
+          <div>
+            <div class="text-xs text-slate-400 font-bold">ՀԻՄՆԱԿԱՆ ՀՈՒՅԶ</div>
+            <div class="text-xl font-extrabold ${emo.text}">${emo.name}</div>
+          </div>
+          <div class="text-sm text-slate-500 bg-white/70 rounded-xl px-3 py-2 border border-slate-100">📡 Ազդանշան՝ <strong>${emo.signal}</strong></div>
+        </div>
+
+        <div class="grid sm:grid-cols-3 gap-3 mb-6">
+          ${[["Կարգավորում",reg,"#0284c7","bg-sky-50"],["Ճնշում",supp,"#f59e0b","bg-amber-50"],["Իմպուլս",imp,"#f43f5e","bg-rose-50"]].map(b=>`
+            <div class="rounded-2xl ${b[3]} p-4 border border-white">
+              <div class="flex justify-between text-xs font-bold mb-1.5"><span class="text-slate-500">${b[0]}</span><span style="color:${b[2]}">${b[1]}%</span></div>
+              <div class="h-2 bg-white rounded-full overflow-hidden shadow-inner"><div class="h-full rounded-full bar-anim2" style="width:0%;background:${b[2]}" data-w="${b[1]}"></div></div>
+            </div>`).join('')}
+        </div>
+
+        <div class="rounded-2xl bg-white/80 border border-slate-100 p-5 mb-4">
+          <div class="text-xs font-black tracking-widest text-sky-600 mb-3">ՌԵՖՐԱՄԻՆԳԻ ՀԱՐՑԵՐ (Գրոսի մոդել)</div>
+          <ol class="space-y-2.5">${questions.map((q,i)=>`<li class="flex gap-3 text-sm text-slate-600"><span class="w-6 h-6 rounded-lg bg-sky-100 text-sky-700 flex-shrink-0 flex items-center justify-center text-xs font-black">${i+1}</span>${q}</li>`).join('')}</ol>
+        </div>
+
+        <div class="rounded-2xl bg-gradient-to-br from-sky-50 to-blue-50 border border-sky-100 p-5 mb-5">
+          <div class="text-xs font-black tracking-widest text-sky-700 mb-3">ԳՈՐԾՆԱԿԱՆ ԽՈՐՀՈՒՐԴ</div>
+          <div class="flex items-start gap-3 mb-3">
+            <div class="w-10 h-10 rounded-xl bg-white soft-shadow flex items-center justify-center flex-shrink-0">
+              <svg class="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1.5m0 15V21m-4.5-18v1.5m9-1.5V3M6.75 6h10.5a2.25 2.25 0 012.25 2.25v7.5A2.25 2.25 0 0117.25 18H6.75A2.25 2.25 0 014.5 15.75v-7.5A2.25 2.25 0 016.75 6z"/></svg>
+            </div>
+            <p class="text-sm text-slate-600 leading-relaxed"><strong>2 րոպեանոց շնչառական դադար.</strong> Քաշեք օդը քթով՝ 4 վայրկյան, պահեք՝ 4 վայրկյան, արձակեք՝ 6 վայրկյան։ Կրկնեք 10 անգամ։ Դա ակտիվացնում է պարասիմպաթիկ նյարդային համակարգը և իջեցնում է ամիգդալայի ակտիվությունը։</p>
+          </div>
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-white soft-shadow flex items-center justify-center flex-shrink-0">
+              <svg class="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+            </div>
+            <div class="text-sm text-slate-600 leading-relaxed">
+              <strong>Պատասխանի ձևակերպում.</strong>
+              <div class="mt-2 bg-white rounded-xl p-3 border border-sky-100 italic text-slate-500">«${isAnger?"Զգում եմ զայրույթ, երբ... Կարո՞ղ եմ խնդրել, որ...": isAnx?"Անհանգստանում եմ, որ... Կարո՞ղ եմ ստանալ ավելի հստակ տեղեկություն...": isHurt?"Վիրավորված եմ, քանի որ սպասում էի... Կարո՞ղ ես բացատրել, թե ինչու...":"Ես հասկանում եմ, որ... և կուզեի..."}»</div>
+              <div class="text-xs text-slate-400 mt-2">Օգտագործեք «Ես զգում եմ... երբ... և կուզեի...» կառուցվածքը՝ առանց մեղադրանքի։</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="text-center">
+          <button id="an-again" class="btn-primary bg-sky-600 text-white font-semibold px-7 py-3 rounded-2xl text-sm">Նոր իրավիճակ վերլուծել</button>
+        </div>
+      </div>`;
+    setTimeout(()=>document.querySelectorAll('.bar-anim2').forEach(el=>el.style.width=el.dataset.w+'%'),80);
+    document.getElementById('an-again').addEventListener('click',()=>{
+      document.getElementById('an-input').value='';
+      out.classList.add('hidden');
+      document.getElementById('an-input').focus();
+    });
+  },1400);
+});
+</script>
+</body>
+</html>
